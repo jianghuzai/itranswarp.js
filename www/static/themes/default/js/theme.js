@@ -3,7 +3,7 @@
 function add_sponsor(selector, width, height, name, img_src, link) {
     var
         stl = 'width:' + width + 'px;height:' + height + 'px;',
-        s = '<div style="float:left;margin:0 1px 1px 0;' + stl + '">';
+        s = '<div style="float:left;margin:0 0 -1px -1px;border:solid 1px #ddd;' + stl + '">';
     if (arguments.length === 4) {
         s = s + name;
     } else {
@@ -55,7 +55,7 @@ function deleteCookie(key) {
 }
 
 function message(title, msg, isHtml, autoClose) {
-    if ($('#modal-message').length==0) {
+    if ($('#modal-message').length == 0) {
         $('body').append('<div id="modal-message" class="uk-modal"><div class="uk-modal-dialog">' +
             '<button type="button" class="uk-modal-close uk-close"></button>' +
             '<div class="uk-modal-header"></div>' +
@@ -110,12 +110,14 @@ function run_javascript(tid, btn) {
             };
         try {
             eval('(function() {\n var console = _console; \n' + code + '\n})();');
-            if (buffer) {
-                showCodeResult(btn, buffer);
+            if (!buffer) {
+                buffer = '(no output)';
             }
+            showCodeResult(btn, buffer);
         }
         catch (e) {
-            showCodeError(btn, String(e));
+            buffer = buffer + String(e);
+            showCodeError(btn, buffer);
         }
     })();
 }
@@ -176,9 +178,9 @@ function run_sql(tid, btn) {
         });
         return '<table class="uk-table"><thead><tr>'
             + $.map(ths, function (th) {
-                var n = th.indexOf('_');
+                var n = th.indexOf('!');
                 if (n > 1) {
-                    th = th.substring(n+1);
+                    th = th.substring(n + 1);
                 }
                 return '<th>' + encodeHtml(th) + '</th>';
             }).join('') + '</tr></thead><tbody>'
@@ -206,7 +208,7 @@ function run_sql(tid, btn) {
             return line.trim() !== '';
         });
         // join:
-        for (i=0; i<lines.length; i++) {
+        for (i = 0; i < lines.length; i++) {
             s = s + lines[i] + '\n';
         }
         // split by ;
@@ -216,7 +218,7 @@ function run_sql(tid, btn) {
         // run each sql:
         result = null;
         error = null;
-        for (i=0; i<lines.length; i++) {
+        for (i = 0; i < lines.length; i++) {
             s = lines[i];
             try {
                 result = alasql(s);
@@ -239,12 +241,9 @@ function run_sql(tid, btn) {
 
 function run_python(tid, btn) {
     var
-        $pre = $('#pre-' + tid),
-        $post = $('#post-' + tid),
-        $textarea = $('#textarea-' + tid),
+        code = _get_code(tid),
         $button = $(btn),
-        $i = $button.find('i'),
-        code = $pre.text() + $textarea.val() + '\n' + ($post.length === 0 ? '' : $post.text());
+        $i = $button.find('i');
     $button.attr('disabled', 'disabled');
     $i.addClass('uk-icon-spinner');
     $i.addClass('uk-icon-spin');
@@ -254,6 +253,31 @@ function run_python(tid, btn) {
         showCodeResult(btn, r.output);
     }).fail(function (r) {
         showCodeError(btn, '<p>无法连接到Python代码运行助手。请检查<a target="_blank" href="/wiki/0014316089557264a6b348958f449949df42a6d3a2e542c000/001432523496782e0946b0f454549c0888d05959b99860f000">本机的设置</a>。</p>', true);
+    }).always(function () {
+        $i.removeClass('uk-icon-spinner');
+        $i.removeClass('uk-icon-spin');
+        $button.removeAttr('disabled');
+    });
+}
+
+function run_java(tid, btn) {
+    var
+        code = _get_code(tid),
+        $button = $(btn),
+        $i = $button.find('i');
+    $button.attr('disabled', 'disabled');
+    $i.addClass('uk-icon-spinner');
+    $i.addClass('uk-icon-spin');
+    $.post('https://local.liaoxuefeng.com:39193/run', $.param({
+        code: code
+    })).done(function (r) {
+        if (r.exitCode === 0) {
+            showCodeResult(btn, r.output);
+        } else {
+            showCodeError(btn, r.output, false);
+        }
+    }).fail(function (r) {
+        showCodeError(btn, '<p>无法连接到Java代码运行助手。请检查<a target="_blank" href="/wiki/001543970808338ad98bbeaa6fc405c8df49d6a015b6e67000/001543970112198a66c30326d4c4ba38684767edcc16912000">本机的设置</a>。</p>', true);
     }).always(function () {
         $i.removeClass('uk-icon-spinner');
         $i.removeClass('uk-icon-spin');
@@ -271,7 +295,7 @@ function adjustTextareaHeight(t) {
     $t.attr('rows', '' + (lines + 1));
 }
 
-var initRunCode = (function() {
+var initRunCode = (function () {
     var tid = 0;
     var trimCode = function (code) {
         var ch;
@@ -285,9 +309,9 @@ var initRunCode = (function() {
             }
         }
         while (code.length > 0) {
-            ch = code[code.length-1];
+            ch = code[code.length - 1];
             if (ch === '\n' || ch === '\r') {
-                code = code.substring(0, code.length-1);
+                code = code.substring(0, code.length - 1);
             }
             else {
                 break;
@@ -296,7 +320,7 @@ var initRunCode = (function() {
         return code + '\n';
     };
     var initPre = function ($pre, fn_run) {
-        tid ++;
+        tid++;
         var
             theId = 'online-run-code-' + tid,
             $code = $pre.children('code'),
@@ -436,13 +460,13 @@ function buildComments(data) {
         return '<p>No comment yet.</p>';
     }
     var i, j, topic, reply, s, L = [], page = data.page;
-    for (i=0; i<data.topics.length; i++) {
+    for (i = 0; i < data.topics.length; i++) {
         topic = data.topics[i];
         L.push('<li>');
         L.push(tplComment.render(topic));
         L.push('<ul>')
         if (topic.replies.length > 0) {
-            for (j=0; j<topic.replies.length; j++) {
+            for (j = 0; j < topic.replies.length; j++) {
                 reply = topic.replies[j];
                 L.push('<li>');
                 L.push(tplCommentReply.render(reply));
@@ -460,7 +484,7 @@ function ajaxLoadComments(insertIntoId, ref_id, page_index) {
     var errorHtml = 'Error when loading. <a href="#0" onclick="ajaxLoadComments(\'' + insertIntoId + '\', \'' + ref_id + '\', ' + page_index + ')">Retry</a>';
     $insertInto = $('#' + insertIntoId);
     $insertInto.html('<i class="uk-icon-spinner uk-icon-spin"></i> Loading...');
-    $.getJSON('/api/ref/' + ref_id + '/topics?page=' + page_index).done(function(data) {
+    $.getJSON('/api/ref/' + ref_id + '/topics?page=' + page_index).done(function (data) {
         if (data.error) {
             $insertInto.html(errorHtml);
             return;
@@ -470,7 +494,7 @@ function ajaxLoadComments(insertIntoId, ref_id, page_index) {
         $insertInto.find('.x-auto-content').each(function () {
             makeCollapsable(this, 400);
         });
-    }).fail(function() {
+    }).fail(function () {
         $insertInto.html(errorHtml);
     });
 }
@@ -491,7 +515,7 @@ function makeCollapsable(obj, max_height) {
         '<a href="#0" style="display:none"><i class="uk-icon-chevron-up"></i> Collapse</a>' +
         '</p>');
     var aName = 'COLLAPSE-' + tmp_collapse;
-    tmp_collapse ++;
+    tmp_collapse++;
     $o.parent().before('<div class="x-anchor"><a name="' + aName + '"></a></div>')
     var $p = $o.next();
     var $aDown = $p.find('a:first');
@@ -529,7 +553,7 @@ function loadComments(ref_id) {
 
 }
 
-$(function() {
+$(function () {
     $('.x-auto-content').each(function () {
         makeCollapsable(this, 300);
     });
@@ -537,78 +561,78 @@ $(function() {
 
 // patch:
 
-if (! window.console) {
+if (!window.console) {
     window.console = {
-        log: function(s) {
+        log: function (s) {
         }
     };
 }
 
-if (! String.prototype.trim) {
-    String.prototype.trim = function() {
+if (!String.prototype.trim) {
+    String.prototype.trim = function () {
         return this.replace(/^\s+|\s+$/g, '');
     };
 }
 
-if (! Number.prototype.toDateTime) {
+if (!Number.prototype.toDateTime) {
     var replaces = {
-        'yyyy': function(dt) {
+        'yyyy': function (dt) {
             return dt.getFullYear().toString();
         },
-        'yy': function(dt) {
+        'yy': function (dt) {
             return (dt.getFullYear() % 100).toString();
         },
-        'MM': function(dt) {
+        'MM': function (dt) {
             var m = dt.getMonth() + 1;
             return m < 10 ? '0' + m : m.toString();
         },
-        'M': function(dt) {
+        'M': function (dt) {
             var m = dt.getMonth() + 1;
             return m.toString();
         },
-        'dd': function(dt) {
+        'dd': function (dt) {
             var d = dt.getDate();
             return d < 10 ? '0' + d : d.toString();
         },
-        'd': function(dt) {
+        'd': function (dt) {
             var d = dt.getDate();
             return d.toString();
         },
-        'hh': function(dt) {
+        'hh': function (dt) {
             var h = dt.getHours();
             return h < 10 ? '0' + h : h.toString();
         },
-        'h': function(dt) {
+        'h': function (dt) {
             var h = dt.getHours();
             return h.toString();
         },
-        'mm': function(dt) {
+        'mm': function (dt) {
             var m = dt.getMinutes();
             return m < 10 ? '0' + m : m.toString();
         },
-        'm': function(dt) {
+        'm': function (dt) {
             var m = dt.getMinutes();
             return m.toString();
         },
-        'ss': function(dt) {
+        'ss': function (dt) {
             var s = dt.getSeconds();
             return s < 10 ? '0' + s : s.toString();
         },
-        's': function(dt) {
+        's': function (dt) {
             var s = dt.getSeconds();
             return s.toString();
         },
-        'a': function(dt) {
+        'a': function (dt) {
             var h = dt.getHours();
             return h < 12 ? 'AM' : 'PM';
         }
     };
     var token = /([a-zA-Z]+)/;
-    Number.prototype.toDateTime = function(format) {
+    Number.prototype.toDateTime = function (format) {
         var fmt = format || 'yyyy-MM-dd hh:mm:ss'
         var dt = new Date(this);
         var arr = fmt.split(token);
-        for (var i=0; i<arr.length; i++) {
+        for (var i = 0; i < arr.length; i++) {
             var s = arr[i];
             if (s && s in replaces) {
                 arr[i] = replaces[s](dt);
@@ -631,7 +655,7 @@ function encodeHtml(str) {
 }
 
 function toSmartDate(timestamp) {
-    if (typeof(timestamp)==='string') {
+    if (typeof (timestamp) === 'string') {
         timestamp = parseInt(timestamp);
     }
     if (isNaN(timestamp)) {
@@ -651,7 +675,7 @@ function toSmartDate(timestamp) {
             d = that.getDate(),
             hh = that.getHours(),
             mm = that.getMinutes();
-        s = y===today.getFullYear() ? '' : y + '-';
+        s = y === today.getFullYear() ? '' : y + '-';
         s = s + m + '-' + d + ' ' + hh + ':' + (mm < 10 ? '0' : '') + mm;
     }
     else if (t >= 86400000) {
@@ -675,15 +699,15 @@ function parseQueryString() {
         q = location.search,
         r = {},
         i, pos, s, qs;
-    if (q && q.charAt(0)==='?') {
+    if (q && q.charAt(0) === '?') {
         qs = q.substring(1).split('&');
-        for (i=0; i<qs.length; i++) {
+        for (i = 0; i < qs.length; i++) {
             s = qs[i];
             pos = s.indexOf('=');
             if (pos <= 0) {
                 continue;
             }
-            r[s.substring(0, pos)] = decodeURIComponent(s.substring(pos+1)).replace(/\+/g, ' ');
+            r[s.substring(0, pos)] = decodeURIComponent(s.substring(pos + 1)).replace(/\+/g, ' ');
         }
     }
     return r;
@@ -711,7 +735,7 @@ $(function () {
                     $form = $(this),
                     $alert = $form && $form.find('.uk-alert-danger'),
                     fieldName = err && err.data;
-                if (! $form.is('form')) {
+                if (!$form.is('form')) {
                     console.error('Cannot call showFormError() on non-form object.');
                     return;
                 }
@@ -743,9 +767,9 @@ $(function () {
                     $form = $(this),
                     $submit = $form && $form.find('button[type=submit]'),
                     $buttons = $form && $form.find('button');
-                    $i = $submit && $submit.find('i'),
+                $i = $submit && $submit.find('i'),
                     iconClass = $i && $i.attr('class');
-                if (! $form.is('form')) {
+                if (!$form.is('form')) {
                     console.error('Cannot call showFormLoading() on non-form object.');
                     return;
                 }
@@ -764,7 +788,7 @@ $(function () {
             });
         },
         postJSON: function (url, data, callback) {
-            if (arguments.length===2) {
+            if (arguments.length === 2) {
                 callback = data;
                 data = {};
             }
@@ -795,10 +819,10 @@ function _httpJSON(method, url, data, callback) {
         type: method,
         dataType: 'json'
     };
-    if (method==='GET') {
+    if (method === 'GET') {
         opt.url = url + '?' + data;
     }
-    if (method==='POST') {
+    if (method === 'POST') {
         opt.url = url;
         opt.data = JSON.stringify(data || {});
         opt.contentType = 'application/json';
@@ -809,16 +833,16 @@ function _httpJSON(method, url, data, callback) {
         }
         return callback(null, r);
     }).fail(function (jqXHR, textStatus) {
-        return callback({'error': 'http_bad_response', 'data': '' + jqXHR.status, 'message': '网络好像出问题了 (HTTP ' + jqXHR.status + ')'});
+        return callback({ 'error': 'http_bad_response', 'data': '' + jqXHR.status, 'message': '网络好像出问题了 (HTTP ' + jqXHR.status + ')' });
     });
 }
 
 function getJSON(url, data, callback) {
-    if (arguments.length===2) {
+    if (arguments.length === 2) {
         callback = data;
         data = {};
     }
-    if (typeof (data)==='object') {
+    if (typeof (data) === 'object') {
         var arr = [];
         $.each(data, function (k, v) {
             arr.push(k + '=' + encodeURIComponent(v));
@@ -829,14 +853,60 @@ function getJSON(url, data, callback) {
 }
 
 function postJSON(url, data, callback) {
-    if (arguments.length===2) {
+    if (arguments.length === 2) {
         callback = data;
         data = {};
     }
     _httpJSON('POST', url, data, callback);
 }
 
-$(function() {
+function checkChoice(formId) {
+    var
+        $form = $('#' + formId),
+        $yes = $form.find('span.uk-text-success'),
+        $no = $form.find('span.uk-text-danger'),
+        $checkboxes = $form.find('input[type=checkbox]');
+    $yes.show();
+    $no.hide();
+    $checkboxes.each(function (i, c) {
+        var
+            $c = $(c),
+            shouldCheck = $c.attr('x-data') === 'x',
+            isCheck = $c.is(':checked');
+        console.log('check ' + shouldCheck + ' > ' + isCheck);
+        if (shouldCheck !== isCheck) {
+            $yes.hide();
+            $no.show();
+        }
+    });
+}
+
+var choiceId = 0;
+
+function initChoice($pre) {
+    choiceId++;
+    var
+        i, x, c,
+        id = 'form-choice-' + choiceId,
+        codes = $pre.children('code').text().split('----', 2),
+        question = codes[0],
+        choices = $.trim(codes[1]).split('\n');
+    var h = '<form id="' + id + '" class="uk-form"><fieldset><legend><i class="uk-icon-question-circle"></i> ' + encodeHtml(question) + '</legend>';
+    for (i = 0; i < choices.length; i++) {
+        c = $.trim(choices[i]);
+        x = c.indexOf('(x)') === 0;
+        if (x) {
+            c = c.substring(3);
+        }
+        h = h + '<div class="uk-form-row"><label><input type="checkbox" ' + (x ? 'x-data="x"' : '') + '> ' + encodeHtml(c) + '</label></div>';
+    }
+    h = h + '<div class="uk-form-row"><button type="button" class="uk-button uk-button-primary" onclick="checkChoice(\'' + id + '\')">Submit</button>&nbsp;&nbsp;&nbsp;';
+    h = h + '<span class="uk-text-large uk-text-success" style="display:none"><i class="uk-icon-check"></i></span>';
+    h = h + '<span class="uk-text-large uk-text-danger" style="display:none"><i class="uk-icon-times"></i></span></div></fieldset></form>';
+    $pre.replaceWith(h);
+}
+
+$(function () {
     // activate navigation menu:
     var xnav = $('meta[property="x-nav"]').attr('content');
     xnav && xnav.trim() && $('#ul-navbar li a[href="' + xnav.trim() + '"]').parent().addClass('uk-active');
@@ -849,7 +919,7 @@ $(function() {
     var lazyImgs = _.map($('img[data-src]').get(), function (i) {
         return $(i);
     });
-    var onScroll = function() {
+    var onScroll = function () {
         var wtop = $window.scrollTop();
         if (wtop > 1600) {
             $gotoTop.show();
@@ -875,12 +945,73 @@ $(function() {
     onScroll();
 
     // go-top:
-    $gotoTop.click(function() {
-        $('html, body').animate({scrollTop: 0}, 1000);
+    $gotoTop.click(function () {
+        $('html, body').animate({ scrollTop: 0 }, 1000);
     });
 
+    // on resize:
+    var
+        $navbar = $('#navbar'),
+        $brand = $('#brand'),
+        $brand2 = $('#brand-small'),
+        $ul = $('#ul-navbar'),
+        $ulList = [],
+        $more = $('#navbar-more'),
+        $moreList = [],
+        $user = $('#navbar-user-info'),
+        minNavWidth = 0;
+    $ul.find('>li.x-nav').each(function () {
+        minNavWidth += $(this).outerWidth();
+        $ulList.push($(this));
+    });
+    $('#ul-navbar-more').find('>li.x-nav').each(function () {
+        $moreList.push($(this));
+    });
+    $window.resize(function () {
+        var total = $navbar.width() - 6;
+        if ($brand.is(':visible')) {
+            total -= $brand.outerWidth();
+        }
+        if ($brand2.is(':visible')) {
+            total -= $brand2.outerWidth();
+        }
+        total -= $user.outerWidth();
+        if (total >= minNavWidth) {
+            $more.hide();
+            $.each($ulList, function (index, nav) {
+                nav.show();
+            });
+        } else {
+            $more.show();
+            var
+                i,
+                skip = false,
+                actualW = 0,
+                maxW = total - $more.outerWidth();
+            for (i = 0; i < $ulList.length; i++) {
+                var
+                    $t = $ulList[i],
+                    $m = $moreList[i],
+                    w = $t.outerWidth();
+                if (!skip && (actualW + w > maxW)) {
+                    skip = true;
+                } else {
+                    actualW += w;
+                }
+                if (skip) {
+                    $t.hide();
+                    $m.show();
+                } else {
+                    $t.show();
+                    $m.hide();
+                }
+            }
+        }
+    });
+    $window.trigger('resize');
+
     // smart date:
-    $('.x-smartdate').each(function() {
+    $('.x-smartdate').each(function () {
         var f = parseInt($(this).attr('date'));
         $(this).text(toSmartDate(f));
     });
@@ -894,29 +1025,33 @@ $(function() {
     //     input_search.animate({'width': old_width}, 500);
     // });
 
-    $('pre>code').each(function(i, code) {
+    $('pre>code').each(function (i, code) {
         var
             $code = $(code),
             classes = ($code.attr('class') || '').split(' '),
-            nohightlight = (_.find(classes, function (s) { return s.indexOf('lang-nohightlight')>=0; }) || '').trim(),
-            warn = (_.find(classes, function (s) { return s.indexOf('lang-!')>=0; }) || '').trim(),
-            info = (_.find(classes, function (s) { return s.indexOf('lang-?')>=0; }) || '').trim(),
-            x_run = (_.find(classes, function (s) { return s.indexOf('lang-x-')>=0; }) || '').trim();
+            nohightlight = (_.find(classes, function (s) { return s.indexOf('lang-nohightlight') >= 0; }) || '').trim(),
+            warn = (_.find(classes, function (s) { return s.indexOf('lang-!') >= 0; }) || '').trim(),
+            info = (_.find(classes, function (s) { return s.indexOf('lang-?') >= 0; }) || '').trim(),
+            choice = (_.find(classes, function (s) { return s.indexOf('lang-choice') >= 0; }) || '').trim(),
+            x_run = (_.find(classes, function (s) { return s.indexOf('lang-x-') >= 0; }) || '').trim();
         if ($code.hasClass('lang-ascii')) {
             // set ascii style for markdown:
             $code.css('font-family', '"Courier New",Consolas,monospace')
-                 .parent('pre')
-                 .css('font-size', '12px')
-                 .css('line-height', '12px')
-                 .css('border', 'none')
-                 .css('background-color', 'transparent');
+                .parent('pre')
+                .css('font-size', '12px')
+                .css('line-height', '12px')
+                .css('border', 'none')
+                .css('white-space', 'pre')
+                .css('background-color', 'transparent');
+        } else if (choice) {
+            initChoice($code.parent());
         } else if (warn || info) {
             $code.parent().replaceWith('<div class="uk-alert ' + (warn ? 'uk-alert-danger' : '') + '"><i class="uk-icon-' + (warn ? 'warning' : 'info-circle') + '"></i> ' + encodeHtml($code.text()) + '</div>');
         } else if (x_run) {
             // run xxx:
             var fn = 'run_' + x_run.substring(7);
             initRunCode($code.parent(), fn);
-        } else if (! nohightlight) {
+        } else if (!nohightlight) {
             hljs.highlightBlock(code);
         }
     });
@@ -924,9 +1059,9 @@ $(function() {
 
 // signin with oauth:
 
-var isDesktop = (function() {
+var isDesktop = (function () {
     var ua = navigator.userAgent.toLowerCase();
-    return ua.indexOf('windows nt')>=0 || ua.indexOf('macintosh')>=0;
+    return ua.indexOf('windows nt') >= 0 || ua.indexOf('macintosh') >= 0;
 })();
 
 function onAuthCallback(err, user) {
@@ -947,11 +1082,11 @@ function onAuthCallback(err, user) {
     // update css:
     $('#x-doc-style').text('.x-display-if-signin {}\n.x-display-if-not-signin { display: none; }\n');
     // reload if neccessary:
-    if (typeof(g_reload_after_signin) !== 'undefined' && g_reload_after_signin === true) {
+    if (typeof (g_reload_after_signin) !== 'undefined' && g_reload_after_signin === true) {
         location.reload();
     }
     else {
-        if (typeof(onAuthSuccess) === 'function') {
+        if (typeof (onAuthSuccess) === 'function') {
             onAuthSuccess();
         }
     }

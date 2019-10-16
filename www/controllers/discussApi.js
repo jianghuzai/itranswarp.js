@@ -12,6 +12,7 @@ const
     search = require('../search/search'),
     constants = require('../constants'),
     userApi = require('./userApi'),
+    settingApi = require('./settingApi'),
     Board = db.Board,
     Topic = db.Topic,
     Reply = db.Reply,
@@ -59,6 +60,26 @@ function unindexDiscussByIds(ids) {
     //         };
     //     fn();
     // });
+}
+
+async function checkSpam(input) {
+    let
+        i, sum = 0,
+        website = await settingApi.getWebsiteSettings(),
+        antispam = website.antispam || '';
+    if (antispam === '') {
+        return false;
+    }
+    let
+        keywords = antispam.split(/\,/),
+        stopwords = /[\`\~\!\@\#\$\%\^\&\*\(\)\_\+\-\=\{\}\[\]\:\;\<\>\,\.\?\/\|\\\s\"\'\r\n\t\　\～\·\！\¥\…\（\）\—\、\；\：\。\，\《\》\【\】\「\」\“\”\‘\’\？]/g,
+        s = input.replace(stopwords, '').toLowerCase();
+    for (i = 0; i < keywords.length; i++) {
+        if (s.indexOf(keywords[i]) >= 0) {
+            sum++;
+        }
+    }
+    return sum > 0 && sum > keywords.length / 4;
 }
 
 async function getBoard(id) {
@@ -115,9 +136,6 @@ async function getAllTopics(page) {
     }
 
     return await Topic.findAll({
-        attributes: {
-            exclude: ['content']
-        },
         order: 'id DESC',
         offset: page.offset,
         limit: page.limit
@@ -137,7 +155,46 @@ async function getRecentTopics(max) {
     return topics;
 }
 
-async function getTopicsByUser(user_id, max=20) {
+async function deleteTopic(id) {
+    let
+        topic = await getTopic(id),
+        reply_ids = await Reply.findAll({
+            attributes: ['id'],
+            where: {
+                topic_id: id
+            }
+        }).map((r) => {
+            return r.id;
+        });
+    await topic.destroy();
+    await Reply.destroy({
+        where: {
+            topic_id: id
+        }
+    });
+    // set topics - 1:
+    await Board.update({
+        topics: db.sequelize.literal('topics - 1')
+    }, {
+            where: {
+                id: topic.board_id
+            }
+        });
+    unindexDiscuss(topic);
+    unindexDiscussByIds(reply_ids);
+}
+
+async function deleteReply(id) {
+    let reply = await Reply.findById(id);
+    if (reply === null) {
+        throw api.notFound('Reply');
+    }
+    reply.deleted = true;
+    await reply.save();
+    unindexDiscuss(reply);
+}
+
+async function getTopicsByUser(user_id, max = 20) {
     return await Topic.findAll({
         attributes: {
             exclude: ['content']
@@ -236,13 +293,13 @@ async function getFirstReplies(topic_id, num) {
 
 async function getReplyPageIndex(topic, reply_id) {
     let num = await Reply.count({
-            where: {
-                'topic_id': topic.id,
-                'id': {
-                    $lt: reply_id
-                }
+        where: {
+            'topic_id': topic.id,
+            'id': {
+                $lt: reply_id
             }
-        });
+        }
+    });
     return Math.floor((num + 1) / 20) + 1;
 }
 
@@ -250,6 +307,10 @@ async function createReply(user, topic_id, data) {
     let topic = await getTopic(topic_id);
     if (topic.locked) {
         throw api.conflictError('Topic', 'Topic is locked.');
+    }
+    if (await checkSpam(data.content)) {
+        await userApi.lockUser(user.id, 5000000000000);
+        throw api.notAllowed('Bad request');
     }
     let reply = await Reply.create({
         topic_id: topic_id,
@@ -260,10 +321,10 @@ async function createReply(user, topic_id, data) {
         replies: db.sequelize.literal('replies + 1'),
         updated_at: Date.now()
     }, {
-        where: {
-            id: topic_id
-        }
-    });
+            where: {
+                id: topic_id
+            }
+        });
     reply.name = 'Re:' + topic.name;
     indexDiscuss(reply);
     delete reply.name;
@@ -274,6 +335,11 @@ async function createReply(user, topic_id, data) {
 }
 
 async function createTopic(user, board_id, ref_type, ref_id, data) {
+    // spam check:
+    if (await checkSpam(data.name + data.content)) {
+        await userApi.lockUser(user.id, 5000000000000);
+        throw api.notAllowed('Bad request');
+    }
     let
         board = await getBoard(board_id),
         topic = await Topic.create({
@@ -289,10 +355,10 @@ async function createTopic(user, board_id, ref_type, ref_id, data) {
     await Board.update({
         topics: db.sequelize.literal('topics + 1')
     }, {
-        where: {
-            id: board_id
-        }
-    });    
+            where: {
+                id: board_id
+            }
+        });
     indexDiscuss(topic);
     if (ref_id) {
         await cache.remove('REF-TOPICS-' + ref_id);
@@ -304,7 +370,7 @@ async function loadTopicsByRefWithCache(ref_id, page) {
     if (page.index === 1) {
         let key = 'REF-TOPICS-' + ref_id;
         return await cache.get(key, async () => {
-            return await loadTopicsByRef(ref_id, page); 
+            return await loadTopicsByRef(ref_id, page);
         });
     }
     return await loadTopicsByRef(ref_id, page);
@@ -313,7 +379,7 @@ async function loadTopicsByRefWithCache(ref_id, page) {
 async function loadTopicsByRef(ref_id, page) {
     let topics = await getTopicsByRef(ref_id, page);
     await userApi.bindUsers(topics);
-    for (let i=0; i<topics.length; i++) {
+    for (let i = 0; i < topics.length; i++) {
         await bindReplies(topics[i]);
     }
     return topics;
@@ -471,7 +537,7 @@ module.exports = {
             }
             board.display_order = pos;
         });
-        for (let i=0; i<boards.length; i++) {
+        for (let i = 0; i < boards.length; i++) {
             await boards[i].save();
         }
         await cache.remove(constants.cache.BOARDS);
@@ -568,34 +634,8 @@ module.exports = {
          * @return {object} Results contains deleted id. e.g. {"id": "12345"}
          */
         ctx.checkPermission(constants.role.EDITOR);
-        let
-            id = ctx.params.id,
-            topic = await getTopic(id),
-            reply_ids = await Reply.findAll({
-                attributes: ['id'],
-                where: {
-                    topic_id: id
-                }
-            }).map((r) => {
-                return r.id;
-            });
-        await topic.destroy();
-        await Reply.destroy({
-            where: {
-                topic_id: id
-            }
-        });
-        // set topics - 1:
-        await Board.update({
-            topics: db.sequelize.literal('topics - 1')
-        }, {
-            where: {
-                id: topic.board_id
-            }
-        });
-        unindexDiscuss(topic);
-        unindexDiscussByIds(reply_ids);
-        ctx.rest({ id: id });
+        await deleteTopic(ctx.params.id);
+        ctx.rest({ id: ctx.params.id });
     },
 
     'GET /api/replies': async (ctx, next) => {
@@ -622,16 +662,8 @@ module.exports = {
          * @return {object} Results contains deleted id. e.g. {"id": "12345"}
          */
         ctx.checkPermission(constants.role.EDITOR);
-        let
-            id = ctx.params.id,
-            reply = await Reply.findById(id);
-        if (reply === null) {
-            throw api.notFound('Reply');
-        }
-        reply.deleted = true;
-        await reply.save();
-        unindexDiscuss(reply);
-        ctx.rest({ id: id });
+        await deleteReply(ctx.params.id);
+        ctx.rest({ id: ctx.params.id });
     },
 
     'POST /api/topics/:id/replies': async (ctx, next) => {

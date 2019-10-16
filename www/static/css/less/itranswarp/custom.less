@@ -1,5 +1,9 @@
 // custom.less
 
+em {
+    font-style: normal;
+}
+
 #header {
     position: fixed;
     left:     0;
@@ -114,6 +118,7 @@ pre.ascii {
     border: none;
     background-color:transparent;
     font-family: "Courier New",Consolas,monospace !important;
+    word-break: normal !important;
 }
 
 // for container:
@@ -217,6 +222,10 @@ pre.ascii {
 .x-discuss-content {
     width: 100%;
     display: block;
+}
+
+.x-display-deleted-true {
+    display: none;
 }
 
 // uikit fix:

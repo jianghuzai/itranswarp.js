@@ -16,10 +16,9 @@ function _str2int(s, defValue) {
 }
 
 module.exports = {
-
     // ' A, B ; Ccc, ccc ' -> 'A,B,Ccc'
     formatTags: (tags) => {
-        if (! tags) {
+        if (!tags) {
             return '';
         }
         let arr = tags.split(/[\,\;\uff0c\uff1b]/).map((value) => {
@@ -67,7 +66,7 @@ module.exports = {
         return index;
     },
 
-    getPage: function (request, pageSize=10) {
+    getPage: function (request, pageSize = 10) {
         let
             index = _str2int(request.query.page, 1),
             size = _str2int(request.query.size, pageSize);

@@ -24,6 +24,13 @@
 .x-wiki-visible {
     display: block;
 }
+.x-can-edit {
+    {% if __user__ and __user__.role <= 10 %}
+    display: inline;
+    {% else %}
+    display: none;
+    {% endif %}
+}
 </style>
 
 <script>
@@ -181,9 +188,9 @@ function expandWikiNode(icon, rec) {
 
 {% block sidebar_left_content %}
     <div class="uk-float-right" style="padding-top:5px">
-        <a href="#0" onclick="collapseWikiNode($('#x-wiki-index>div>i').get(0), true);expandActiveNode()" style="margin-left:5px"><i class="uk-icon-check-square"></i></a>
-        <a href="#0" onclick="expandWikiNode($('#x-wiki-index>div>i').get(0), true)" style="margin-left:5px"><i class="uk-icon-minus-square"></i></a>
-        <a href="#0" onclick="collapseWikiNode($('#x-wiki-index>div>i').get(0), true)" style="margin-left:5px"><i class="uk-icon-plus-square"></i></a>
+        <a href="#0" onclick="expandWikiNode($('#x-wiki-index>div>i').get(0), true)" style="margin-left:5px"><i class="uk-icon-expand"></i></a>
+        <a href="#0" onclick="collapseWikiNode($('#x-wiki-index>div>i').get(0), true);expandActiveNode()" style="margin-left:5px"><i class="uk-icon-dot-circle-o"></i></a>
+        <a href="#0" onclick="collapseWikiNode($('#x-wiki-index>div>i').get(0), true)" style="margin-left:5px"><i class="uk-icon-compress"></i></a>
     </div>
     <ul class="uk-nav uk-nav-side">
         <li class="uk-nav-header">{{ _('Index') }}</li>
@@ -222,7 +229,7 @@ function expandWikiNode(icon, rec) {
 
 {% block content %}
     <h4>{{ current.name }}</h4>
-    <div class="x-wiki-info"><span>{{ _('Reads') }}: {{ current.views }}</span></div>
+    <div class="x-wiki-info"><span>{{ _('Reads') }}: {{ current.views }}</span> <a href="/manage/wiki/edit_{% if current.type == 'wikipage' %}wikipage{% else %}wiki{% endif %}?id={{ current.id }}" target="_blank" class="x-can-edit uk-text-danger">{{ _('Edit') }}</a></div>
 
     <hr>
 

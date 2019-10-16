@@ -17,26 +17,29 @@ const
     AuthUser = db.AuthUser,
     LocalUser = db.LocalUser,
     nextId = db.nextId,
-    SECURE = config.session.https,
+    SECURE = config.session_https === 'true',
     COOKIE_EXPIRED_DATE = new Date(0),
-    LOCAL_SIGNIN_EXPIRES_IN_MS = 1000 * config.session.expires;
+    LOCAL_SIGNIN_EXPIRES_IN_MS = parseInt(config.session_expires) * 1000;
 
 // init oauth2 providers:
 
 let oauth2_providers = {};
 
-_.each(config.oauth2, (cfg, name) => {
+// TODO: refactor:
+
+if (config.oauth2_weibo === 'true') {
+    let name = 'weibo';
     let redirect_uri = (SECURE ? 'https' : 'http') + '://' + config.domain + '/auth/callback/' + name;
     let provider = oauth2.createProvider(
         name,
-        cfg.app_key,
-        cfg.app_secret,
+        config.oauth2_weibo_app_key,
+        config.oauth2_weibo_app_secret,
         redirect_uri
     );
     provider.getAuthentication = bluebird.promisify(provider.getAuthentication, { context: provider });
     oauth2_providers[name] = provider;
     logger.info(`Init OAuth2: ${name}, redirect_uri: ${provider.redirect_uri}`);
-});
+}
 
 async function getUsers(page) {
     page.total = await User.count();
@@ -61,6 +64,16 @@ async function getUserByEmail(email) {
         where: {
             'email': email
         }
+    });
+}
+
+async function lockUser(userId, locked_until) {
+    let user = await getUser(userId);
+    if (user.role <= constants.role.ADMIN) {
+        throw api.notAllowed('Cannot lock admin user.');
+    }
+    await user.update({
+        locked_until: locked_until
     });
 }
 
@@ -159,6 +172,8 @@ module.exports = {
 
     bindUsers: bindUsers,
 
+    lockUser: lockUser,
+
     'GET /api/users/me': async (ctx, next) => {
         ctx.checkPermission(constants.role.SUBSCRIBER);
         let user = await getUser(ctx.state.__user__.id);
@@ -246,7 +261,7 @@ module.exports = {
         let
             expires = Date.now() + LOCAL_SIGNIN_EXPIRES_IN_MS,
             cookieStr = auth.makeSessionCookie(constants.signin.LOCAL, localuser.id, localuser.passwd, expires);
-        ctx.cookies.set(config.session.cookie, cookieStr, {
+        ctx.cookies.set(config.session_name, cookieStr, {
             path: '/',
             httpOnly: true,
             secure: SECURE,
@@ -260,7 +275,7 @@ module.exports = {
         /**
          * Clear cookie and redirect to referer page.
          */
-        ctx.cookies.set(config.session.cookie, 'deleted', {
+        ctx.cookies.set(config.session_name, 'deleted', {
             path: '/',
             httpOnly: true,
             secure: SECURE,
@@ -322,6 +337,7 @@ module.exports = {
             });
         }
         catch (e) {
+            logger.error(e);
             logger.warn('OAuth2 callback error: get authentication failed.');
             ctx.response.body = '<html><body>Authenticate failed.</body></html>';
             return;
@@ -337,7 +353,7 @@ module.exports = {
         }
         // make session cookie:
         cookieStr = auth.makeSessionCookie(name, auth_user.id, auth_user.auth_token, auth_user.expires_at);
-        ctx.cookies.set(config.session.cookie, cookieStr, {
+        ctx.cookies.set(config.session_name, cookieStr, {
             path: '/',
             httpOnly: true,
             secure: SECURE,
@@ -387,16 +403,7 @@ module.exports = {
          */
         ctx.checkPermission(constants.role.ADMIN);
         ctx.validate('lockUser');
-        let
-            id = ctx.params.id,
-            user = await getUser(id),
-            locked_until = ctx.request.body.locked_until;
-        if (user.role <= constants.role.ADMIN) {
-            throw api.notAllowed('Cannot lock admin user.');
-        }
-        await user.update({
-            locked_until: locked_until
-        });
-        ctx.rest(user);
+        await lockUser(ctx.params.id, ctx.request.body.locked_until);
+        ctx.rest({ id: ctx.params.id });
     }
 };
